@@ -1,0 +1,17 @@
+---
+# RKE2 Configuration File - Per official documentation
+{% for key, value in rke2_config.items() %}
+{% if value is mapping %}
+{{ key }}:
+{% for subkey, subvalue in value.items() %}
+  {{ subkey }}: {{ subvalue | to_yaml }}
+{% endfor %}
+{% elif value is sequence and value is not string %}
+{{ key }}:
+{% for item in value %}
+  - {{ item }}
+{% endfor %}
+{% else %}
+{{ key }}: {{ value | to_yaml }}
+{% endif %}
+{% endfor %}

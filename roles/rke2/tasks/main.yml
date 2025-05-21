@@ -1,0 +1,110 @@
+---
+- name: Create required directories
+  file:
+    path: "{{ item }}"
+    state: directory
+    mode: 0755
+  loop:
+    - /etc/rancher/rke2
+    - "{{ kubeconfig_path | dirname }}"
+
+- name: Configure RKE2 server
+  template:
+    src: config.yaml.j2
+    dest: /etc/rancher/rke2/config.yaml
+    owner: root
+    group: root
+    mode: 0644
+  notify: restart rke2
+
+- name: Download RKE2 installation script
+  get_url:
+    url: https://get.rke2.io
+    dest: /tmp/rke2-install.sh
+    mode: 0755
+
+- name: Run RKE2 installer (following official method)
+  environment:
+    INSTALL_RKE2_VERSION: "{{ rke2_version | default(omit) }}"
+    INSTALL_RKE2_CHANNEL: "{{ rke2_channel }}"
+    INSTALL_RKE2_TYPE: "{{ rke2_type }}"
+    INSTALL_RKE2_METHOD: "{{ rke2_install_method }}"
+  command: /tmp/rke2-install.sh
+  args:
+    creates: /usr/local/bin/rke2
+  register: install_result
+  changed_when: "'Using installer' in install_result.stdout"
+
+- name: Enable RKE2 service
+  systemd:
+    name: "rke2-{{ rke2_type }}"
+    enabled: yes
+    state: started
+  register: rke2_service
+
+- name: Wait for RKE2 to be ready (following official post-install checks)
+  wait_for:
+    path: /var/lib/rancher/rke2/server/manifests
+    state: present
+    timeout: 300
+  when: rke2_type == 'server'
+
+- name: Configure kubectl in profile (for easier access)
+  copy:
+    dest: /etc/profile.d/rke2.sh
+    content: |
+      export PATH=$PATH:/var/lib/rancher/rke2/bin
+      export KUBECONFIG=/etc/rancher/rke2/rke2.yaml
+    mode: 0644
+
+- name: Copy kubeconfig to user directory for easier access
+  copy:
+    src: /etc/rancher/rke2/rke2.yaml
+    dest: "{{ kubeconfig_path }}"
+    remote_src: yes
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    mode: 0600
+  when: rke2_type == 'server'
+
+- name: Create symbolic links for kubectl and helm
+  file:
+    src: "/var/lib/rancher/rke2/bin/{{ item }}"
+    dest: "/usr/local/bin/{{ item }}"
+    state: link
+  loop:
+    - kubectl
+    - helm
+    - crictl
+  when: rke2_type == 'server'
+
+- name: Wait for node to be ready
+  shell: /var/lib/rancher/rke2/bin/kubectl get nodes | grep -w "Ready"
+  register: node_ready
+  retries: 30
+  delay: 10
+  until: node_ready.rc == 0
+  changed_when: false
+  when: rke2_type == 'server'
+
+- name: Verify installation with kubectl
+  shell: /var/lib/rancher/rke2/bin/kubectl get nodes -o wide
+  register: kubectl_nodes
+  changed_when: false
+  when: rke2_type == 'server'
+
+- name: Display nodes
+  debug:
+    var: kubectl_nodes.stdout_lines
+  when: rke2_type == 'server'
+
+- name: Verify Kubernetes components
+  shell: /var/lib/rancher/rke2/bin/kubectl get pods -A
+  register: kubectl_pods
+  changed_when: false
+  when: rke2_type == 'server'
+
+- name: Display pods
+  debug:
+    var: kubectl_pods.stdout_lines
+  when: rke2_type == 'server'

@@ -1,0 +1,41 @@
+---
+# Installation options
+rke2_channel: "stable"  # Options: stable, latest, testing
+rke2_version: ""        # Leave empty for latest in channel
+rke2_type: "server"     # Options: server, agent
+rke2_install_method: "tar"  # Options: tar, rpm
+
+# Config file options following official documentation
+rke2_config:
+  # Basic configuration
+  write-kubeconfig-mode: "0644"
+  tls-san:
+    - "{{ ansible_host }}"
+    - "{{ inventory_hostname }}"
+  
+  # Node customization
+  node-name: "{{ inventory_hostname }}"
+  node-label:
+    - "node.kubernetes.io/type=single"
+  
+  # CNI selection - use 'canal' for better Windows support if needed
+  cni: "canal"  # Options: canal, calico, cilium, none
+  
+  # Network configuration
+  cluster-domain: "cluster.local"
+  service-cidr: "10.43.0.0/16"
+  cluster-cidr: "10.42.0.0/16"
+  
+  # System configuration
+  kubelet-arg:
+    - "max-pods=200"
+    - "feature-gates=PodSecurity=true"
+  kube-apiserver-arg:
+    - "feature-gates=PodSecurity=true"
+  
+  # Advanced features
+  disable:
+    - "rke2-ingress-nginx"  # Disable default ingress
+
+# Paths for kubeconfig
+kubeconfig_path: "/home/{{ ansible_user }}/.kube/config"

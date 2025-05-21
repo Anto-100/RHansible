@@ -1,0 +1,6 @@
+---
+- name: Install RKE2 Single Node Kubernetes Cluster
+  hosts: kubernetes
+  become: yes
+  roles:
+    - rke2
