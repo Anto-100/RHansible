@@ -67,16 +67,34 @@
     mode: 0600
   when: rke2_type == 'server'
 
-- name: Create symbolic links for kubectl and helm
-  file:
-    src: "/var/lib/rancher/rke2/bin/{{ item }}"
-    dest: "/usr/local/bin/{{ item }}"
-    state: link
+# Replace the existing symbolic link task with these improved tasks
+- name: Wait for RKE2 binaries to be available
+  wait_for:
+    path: "/var/lib/rancher/rke2/bin/kubectl"
+    state: present
+    timeout: 300
+  when: rke2_type == 'server'
+
+- name: Check if RKE2 binaries exist
+  stat:
+    path: "/var/lib/rancher/rke2/bin/{{ item }}"
+  register: rke2_binaries
   loop:
     - kubectl
-    - helm
     - crictl
+    - helm
   when: rke2_type == 'server'
+
+- name: Create symbolic links for RKE2 binaries
+  file:
+    src: "/var/lib/rancher/rke2/bin/{{ item.item }}"
+    dest: "/usr/local/bin/{{ item.item }}"
+    state: link
+  loop: "{{ rke2_binaries.results }}"
+  when: 
+    - rke2_type == 'server'
+    - item.stat.exists
+  ignore_errors: yes
 
 - name: Wait for node to be ready
   shell: /var/lib/rancher/rke2/bin/kubectl get nodes | grep -w "Ready"
